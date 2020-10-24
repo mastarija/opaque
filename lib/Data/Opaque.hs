@@ -32,6 +32,9 @@ data Opaque
                             --   'Opaque' values - @implicit@
   deriving ( Eq, Show, Generic )
 
+{- |
+  Type alias for a 'ORecord' keys.
+-}
 type OLabel = Text
 
 {- |

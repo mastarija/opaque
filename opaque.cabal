@@ -1,0 +1,39 @@
+cabal-version       : 3.0
+
+name                : opaque
+version             : 0.0.0.0
+build-type          : Simple
+
+category            : Data
+synopsis            : Simple multipurpose opaque data type.
+description         : Please see the README.
+
+homepage            : https://github.com/mastarija/opaque#readme
+bug-reports         : https://github.com/mastarija/opaque/issues
+
+author              : Luka Hadžiegrić
+maintainer          : luka@mastarija.com
+
+license             : MIT
+license-file        : LICENSE
+copyright           : Copyright (C) Luka Hadžiegrić 2020
+
+extra-source-files  : README.md
+
+source-repository head
+  type              : git
+  location          : https://github.com/mastarija/opaque
+
+common core
+  ghc-options       : -Wall
+  build-depends     : base
+                    , text
+                    , bytestring
+                    , scientific
+                    , unordered-containers
+  default-language  : Haskell2010
+
+library
+  import            : core
+  hs-source-dirs    : lib
+  exposed-modules   : Data.Opaque
