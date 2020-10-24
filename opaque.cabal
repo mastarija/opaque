@@ -28,6 +28,7 @@ common core
   ghc-options       : -Wall
   build-depends     : base
                     , text
+                    , vector
                     , bytestring
                     , scientific
                     , unordered-containers
