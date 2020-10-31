@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -9,7 +10,8 @@
 module Data.Opaque where
 --
 import Data.ByteString      ( ByteString )
-import Data.HashMap.Strict  ( HashMap , insert )
+import Data.Map             ( Map , insert )
+import Data.Aeson           ( ToJSON , encode )
 --
 import GHC.Generics
   ( Generic (..) , Constructor (..) , Selector (..)
@@ -27,7 +29,7 @@ type OBinary = ByteString
 type ONumber = Double
 type OString = String
 type OVector = [ Opaque ]
-type ORecord = HashMap OLabel Opaque
+type ORecord = Map OLabel Opaque
 
 data Opaque
   = ONull
@@ -43,7 +45,7 @@ data Test0 = Test0
   { field01 :: Bool
   , field02 :: String
   , field03 :: Int
-  } deriving ( Show , Generic )
+  } deriving ( Show , Generic , ToJSON , EncodeOpaque )
 
 test0 :: Test0
 test0 = Test0
@@ -53,7 +55,7 @@ test0 = Test0
   }
 
 data Test1 = Test1V1 | Test1V2 | Test1V3 Int
-  deriving ( Show , Generic )
+  deriving ( Show , Generic , ToJSON , EncodeOpaque )
 
 test10 :: Test1
 test10 = Test1V1
@@ -88,12 +90,16 @@ instance {-# OVERLAPPABLE #-} EncodeOpaque' f => EncodeOpaque' ( C1 m f ) where
   encodeOpaque' = encodeOpaque' . unM1
 
 instance {-# OVERLAPPABLE #-}
-  EncodeOpaque' f =>
+  ( Constructor m , EncodeOpaque' f ) =>
   EncodeOpaque' ( C1 m ( S1 ( 'MetaSel 'Nothing x y z ) f ) ) where
-  encodeOpaque' ( M1 ( M1 v ) ) = encodeOpaque' v
+  encodeOpaque' m@( M1 ( M1 v ) )
+    = ORecord
+    $ insert "tag" ( OString $ conName m )
+    $ insert "val" ( encodeOpaque' v )
+    $ mempty
 
 instance {-# OVERLAPPING #-} Constructor m => EncodeOpaque' ( C1 m U1 ) where
-  encodeOpaque' = OString . conName
+  encodeOpaque' m = ORecord $ insert "tag" ( OString $ conName m ) mempty
 
 instance EncodeOpaque c => EncodeOpaque' ( Rec0 c ) where
   encodeOpaque' = encodeOpaque . unK1
