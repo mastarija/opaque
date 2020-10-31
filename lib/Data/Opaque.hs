@@ -7,15 +7,17 @@
 --
 module Data.Opaque where
 --
-import Data.Text            ( Text )
-import Data.Vector          ( Vector )
 import Data.ByteString      ( ByteString )
-import Data.HashMap.Strict  ( HashMap )
+import Data.HashMap.Strict  ( HashMap , insert )
 --
-import GHC.Generics         ( Generic (..) , Datatype (..) , Constructor (..) , M1 (..) , D1 , C1 , (:+:) (..) )
+import GHC.Generics
+  ( Generic (..) , Constructor (..) , Selector (..)
+  , Rec0 , M1 (..) , K1 (..) , D1 , C1 , S1
+  , (:*:) (..)
+  )
 --
 
-type OLabel  = Text
+type OLabel  = String
 
 type OBool   = Bool
 type OBinary = ByteString
@@ -34,21 +36,60 @@ data Opaque
   | ORecord !ORecord
   deriving ( Eq , Show , Generic )
 
+data Test0 = Test0
+  { field01 :: Bool
+  , field02 :: String
+  , field03 :: Int
+  } deriving ( Show , Generic )
+
+test0 :: Test0
+test0 = Test0
+  { field01 = False
+  , field02 = "Hello"
+  , field03 = 1
+  }
+
+data Test1 = Test1V1 | Test1V2 | Test1V3 Int
+  deriving ( Show , Generic )
+
 class EncodeOpaque v where
   encodeOpaque :: v -> Opaque
   default
     encodeOpaque :: ( Generic v , EncodeOpaque' ( Rep v ) ) => v -> Opaque
   encodeOpaque = encodeOpaque' . from
 
+instance EncodeOpaque Bool where
+  encodeOpaque = OBool
+
+instance EncodeOpaque String where
+  encodeOpaque = OString
+
+instance EncodeOpaque Int where
+  encodeOpaque = ONumber . fromIntegral
+
+--
+
 class EncodeOpaque' f where
   encodeOpaque' :: f p -> Opaque
 
-instance EncodeOpaque' f => EncodeOpaque' ( D1 c f ) where
-  encodeOpaque' ( M1 v ) = encodeOpaque' v
+instance EncodeOpaque' f => EncodeOpaque' ( D1 m f ) where
+  encodeOpaque' = encodeOpaque' . unM1
 
-instance Constructor c => EncodeOpaque' ( C1 c f ) where
-  encodeOpaque' m@( M1 _ ) = OString $ conName m
+instance EncodeOpaque' f => EncodeOpaque' ( C1 m f ) where
+  encodeOpaque' = encodeOpaque' . unM1
 
-instance ( EncodeOpaque' f , EncodeOpaque' g ) => EncodeOpaque' ( f :+: g ) where
-  encodeOpaque' ( L1 v ) = encodeOpaque' v
-  encodeOpaque' ( R1 v ) = encodeOpaque' v
+instance EncodeOpaque c => EncodeOpaque' ( Rec0 c ) where
+  encodeOpaque' = encodeOpaque . unK1
+
+instance ( Selector m , EncodeOpaque' f ) => EncodeOpaque' ( S1 m f ) where
+  encodeOpaque' s@( M1 v )
+    = ORecord
+    $ insert ( selName s ) ( encodeOpaque' v ) mempty
+
+instance ( Selector m , EncodeOpaque' f , EncodeOpaque' g ) => EncodeOpaque' ( ( S1 m f ) :*: g ) where
+  encodeOpaque' ( s1@( M1 v1 ) :*: g )
+    = ORecord
+    $ insert ( selName s1 ) ( encodeOpaque' v1 )
+    $ case encodeOpaque' g of
+      ORecord v2 -> v2
+      _          -> mempty
