@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -12,7 +13,9 @@ import Data.HashMap.Strict  ( HashMap , insert )
 --
 import GHC.Generics
   ( Generic (..) , Constructor (..) , Selector (..)
-  , Rec0 , M1 (..) , K1 (..) , D1 , C1 , S1
+  , Rec0 , M1 (..) , K1 (..) , D1 , C1 , S1 , U1
+  , Meta (..)
+  , (:+:) (..)
   , (:*:) (..)
   )
 --
@@ -52,6 +55,12 @@ test0 = Test0
 data Test1 = Test1V1 | Test1V2 | Test1V3 Int
   deriving ( Show , Generic )
 
+test10 :: Test1
+test10 = Test1V1
+
+test11 :: Test1
+test11 = Test1V3 2
+
 class EncodeOpaque v where
   encodeOpaque :: v -> Opaque
   default
@@ -75,8 +84,16 @@ class EncodeOpaque' f where
 instance EncodeOpaque' f => EncodeOpaque' ( D1 m f ) where
   encodeOpaque' = encodeOpaque' . unM1
 
-instance EncodeOpaque' f => EncodeOpaque' ( C1 m f ) where
+instance {-# OVERLAPPABLE #-} EncodeOpaque' f => EncodeOpaque' ( C1 m f ) where
   encodeOpaque' = encodeOpaque' . unM1
+
+instance {-# OVERLAPPABLE #-}
+  EncodeOpaque' f =>
+  EncodeOpaque' ( C1 m ( S1 ( 'MetaSel 'Nothing x y z ) f ) ) where
+  encodeOpaque' ( M1 ( M1 v ) ) = encodeOpaque' v
+
+instance {-# OVERLAPPING #-} Constructor m => EncodeOpaque' ( C1 m U1 ) where
+  encodeOpaque' = OString . conName
 
 instance EncodeOpaque c => EncodeOpaque' ( Rec0 c ) where
   encodeOpaque' = encodeOpaque . unK1
@@ -93,3 +110,7 @@ instance ( Selector m , EncodeOpaque' f , EncodeOpaque' g ) => EncodeOpaque' ( (
     $ case encodeOpaque' g of
       ORecord v2 -> v2
       _          -> mempty
+
+instance ( EncodeOpaque' f , EncodeOpaque' g ) => EncodeOpaque' ( f :+: g ) where
+  encodeOpaque' ( L1 f ) = encodeOpaque' f
+  encodeOpaque' ( R1 g ) = encodeOpaque' g
