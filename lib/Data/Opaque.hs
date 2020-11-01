@@ -1,22 +1,29 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 --
 module Data.Opaque where
 --
-import Data.ByteString      ( ByteString )
-import Data.Map             ( Map , insert )
-import Data.Aeson           ( ToJSON , encode )
+import Data.Map         ( Map , toList , fromList )
+import Data.Word        ( Word8 )
+import Data.List        ( intercalate )
+import Numeric.Natural  ( Natural )
 --
 import GHC.Generics
-  ( Generic (..) , Constructor (..) , Selector (..)
-  , Rec0 , M1 (..) , K1 (..) , D1 , C1 , S1 , U1
+  ( Generic (..)
+  , Selector (..)
+  , Constructor (..)
   , Meta (..)
+  , M1 (..) , D1 , D , C1 , C , S1 , S
+  , V1
+  , U1 (..)
+  , K1 (..) , Rec0 , R
   , (:+:) (..)
   , (:*:) (..)
   )
@@ -25,7 +32,7 @@ import GHC.Generics
 type OLabel  = String
 
 type OBool   = Bool
-type OBinary = ByteString
+type OBinary = [ Word8 ]
 type ONumber = Double
 type OString = String
 type OVector = [ Opaque ]
@@ -39,84 +46,129 @@ data Opaque
   | OString !OString
   | OVector !OVector
   | ORecord !ORecord
-  deriving ( Eq , Show , Generic )
+  deriving ( Eq , Generic )
 
-data Test0 = Test0
-  { field01 :: Bool
-  , field02 :: String
-  , field03 :: Int
-  } deriving ( Show , Generic , ToJSON , EncodeOpaque )
+instance Show Opaque where
+  show = aux 0
+    where aux :: Natural -> Opaque -> String
+          aux l = \case
+            ONull     -> "Null"
+            OBool b   -> show b
+            OBinary _ -> "..."
+            ONumber n -> show n
+            OString s -> show s
+            OVector v -> "[..]"
+            ORecord r -> concat
+              [ indent l "{ "
+              , intercalate ( "\n" <> ( indent l ", " ) ) $ fmap ( rec l ) $ toList r
+              , "\n" <> ( indent l "}" )
+              ]
 
-test0 :: Test0
-test0 = Test0
-  { field01 = False
-  , field02 = "Hello"
-  , field03 = 1
-  }
+          tab :: String
+          tab = "  "
 
-data Test1 = Test1V1 | Test1V2 | Test1V3 Int
-  deriving ( Show , Generic , ToJSON , EncodeOpaque )
+          rec :: Natural -> ( OLabel , Opaque ) -> String
+          rec l ( label , value ) = show label <> " = " <> isRec value <> aux ( l + 1 ) value
+            where isRec ( ORecord _ ) = "\n"
+                  isRec _ = ""
 
-test10 :: Test1
-test10 = Test1V1
+          vec :: Natural -> Opaque -> String
+          vec l value = undefined
 
-test11 :: Test1
-test11 = Test1V3 2
-
-class EncodeOpaque v where
-  encodeOpaque :: v -> Opaque
-  default
-    encodeOpaque :: ( Generic v , EncodeOpaque' ( Rep v ) ) => v -> Opaque
-  encodeOpaque = encodeOpaque' . from
-
-instance EncodeOpaque Bool where
-  encodeOpaque = OBool
-
-instance EncodeOpaque String where
-  encodeOpaque = OString
-
-instance EncodeOpaque Int where
-  encodeOpaque = ONumber . fromIntegral
+          indent :: Natural -> String -> String
+          indent 0 s = s
+          indent n s = tab <> indent ( n - 1 ) s
 
 --
 
-class EncodeOpaque' f where
-  encodeOpaque' :: f p -> Opaque
+ex1 :: Opaque
+ex1 = ORecord $ fromList
+  [ ( "field01" , ONull )
+  , ( "field02" , ORecord $ fromList
+      [ ( "test01" , OBool True )
+      , ( "test02" , ONumber 12 )
+      , ( "test03" , ORecord $ fromList
+          [ ( "test01" , OString "hello world!" )
+          , ( "test02" , ONumber 12 )
+          ]
+        )
+      ]
+    )
+  ]
 
-instance EncodeOpaque' f => EncodeOpaque' ( D1 m f ) where
-  encodeOpaque' = encodeOpaque' . unM1
+data Test00 = Test00
+  deriving ( Show , Generic , EncOpaque )
 
-instance {-# OVERLAPPABLE #-} EncodeOpaque' f => EncodeOpaque' ( C1 m f ) where
-  encodeOpaque' = encodeOpaque' . unM1
+data Test01 = Test01_0 | Test01_1
+  deriving ( Show , Generic , EncOpaque )
 
-instance {-# OVERLAPPABLE #-}
-  ( Constructor m , EncodeOpaque' f ) =>
-  EncodeOpaque' ( C1 m ( S1 ( 'MetaSel 'Nothing x y z ) f ) ) where
-  encodeOpaque' m@( M1 ( M1 v ) )
-    = ORecord
-    $ insert "tag" ( OString $ conName m )
-    $ insert "val" ( encodeOpaque' v )
-    $ mempty
+data Test02 = Test02_0 | Test02_1 | Test02_3 Test00 | Test02_4 Test00 Test01
+  deriving ( Show , Generic , EncOpaque )
 
-instance {-# OVERLAPPING #-} Constructor m => EncodeOpaque' ( C1 m U1 ) where
-  encodeOpaque' m = ORecord $ insert "tag" ( OString $ conName m ) mempty
+data Test03 = Test03
+  { t03Field00 :: Test00
+  , t03Field01 :: Test01
+  , t03Field02 :: Test02
+  }
 
-instance EncodeOpaque c => EncodeOpaque' ( Rec0 c ) where
-  encodeOpaque' = encodeOpaque . unK1
+data Test04
+  = Test04_0
+  | Test04_1 Test03
+  | Test04_2
+    { t04Field00 :: Test00
+    , t04Field01 :: Test01
+    , t04Field02 :: Test02
+    , t04Field03 :: Test03
+    }
 
-instance ( Selector m , EncodeOpaque' f ) => EncodeOpaque' ( S1 m f ) where
-  encodeOpaque' s@( M1 v )
-    = ORecord
-    $ insert ( selName s ) ( encodeOpaque' v ) mempty
+--
 
-instance ( Selector m , EncodeOpaque' f , EncodeOpaque' g ) => EncodeOpaque' ( ( S1 m f ) :*: g ) where
-  encodeOpaque' ( s1@( M1 v1 ) :*: g )
-    = ORecord
-    $ insert ( selName s1 ) ( encodeOpaque' v1 )
-    $ case encodeOpaque' g of
-      ORecord v2 -> v2
-      _          -> mempty
+class EncOpaque a where
+  encOpaque :: a -> Opaque
+  default encOpaque :: ( Generic a , EncOpaque' ( Rep a ) ) => a -> Opaque
+  encOpaque = encOpaque' . from
 
-instance ( EncodeOpaque' f , EncodeOpaque' g ) => EncodeOpaque' ( f :+: g ) where
-  encodeOpaque' ( L1 f ) = encodeOpaque' f
-  encodeOpaque' ( R1 g ) = encodeOpaque' g
+class EncOpaque' f where
+  encOpaque' :: f p -> Opaque
+
+--
+
+instance EncOpaque' V1 where
+  encOpaque' = const ONull
+
+instance EncOpaque' U1 where
+  encOpaque' = const ONull
+
+instance EncOpaque v => EncOpaque' ( Rec0 v ) where
+  encOpaque' = encOpaque . unK1
+
+instance ( EncOpaque' f ) => EncOpaque' ( D1 d f ) where
+  encOpaque' = encOpaque' . unM1
+
+instance {-# OVERLAPPABLE #-} EncOpaque' f => EncOpaque' ( C1 c f ) where
+  encOpaque' = encOpaque' . unM1
+
+instance ( Constructor c ) => EncOpaque' ( C1 c U1 ) where
+  encOpaque' c = ORecord $ fromList
+    [ ( "con" , OString $ conName c )
+    ]
+
+instance ( Constructor c , EncOpaque' f ) => EncOpaque' ( C1 c ( S1 s f ) ) where
+  encOpaque' c@( M1 ( M1 v ) ) = ORecord $ fromList
+    [ ( "con" , OString $ conName c )
+    , ( "val" , encOpaque' v )
+    ]
+
+instance ( s ~ 'MetaSel 'Nothing x y z , EncOpaque' f , EncOpaque' g ) => EncOpaque' ( ( S1 s f ) :*: g ) where
+  encOpaque' ( ( M1 f ) :*: g ) = encOpaque' f `aux` encOpaque' g
+    where aux :: Opaque -> Opaque -> Opaque
+          aux v1 ( OVector v2 ) = OVector $ v1 : v2
+          aux v1 v2             = OVector $ v1 : [ v2 ]
+
+instance ( s ~ 'MetaSel 'Nothing x y z , EncOpaque' f ) => EncOpaque' ( S1 s f ) where
+  encOpaque' = encOpaque' . unM1
+
+instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :+: g ) where
+  encOpaque' ( L1 v ) = encOpaque' v
+  encOpaque' ( R1 v ) = encOpaque' v
+
