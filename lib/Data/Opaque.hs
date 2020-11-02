@@ -57,10 +57,17 @@ instance Show Opaque where
             OBinary _ -> "..."
             ONumber n -> show n
             OString s -> show s
-            OVector v -> "[..]"
+            OVector v -> concat
+              [ indent l "[ "
+              , intercalate ( "\n" <> ( indent l ", " ) )
+              $ fmap ( aux l ) v
+              , "\n" <> ( indent l "]")
+              ]
             ORecord r -> concat
               [ indent l "{ "
-              , intercalate ( "\n" <> ( indent l ", " ) ) $ fmap ( rec l ) $ toList r
+              , intercalate ( "\n" <> ( indent l ", " ) )
+              $ fmap ( rec l )
+              $ toList r
               , "\n" <> ( indent l "}" )
               ]
 
@@ -68,12 +75,10 @@ instance Show Opaque where
           tab = "  "
 
           rec :: Natural -> ( OLabel , Opaque ) -> String
-          rec l ( label , value ) = show label <> " = " <> isRec value <> aux ( l + 1 ) value
-            where isRec ( ORecord _ ) = "\n"
-                  isRec _ = ""
-
-          vec :: Natural -> Opaque -> String
-          vec l value = undefined
+          rec l ( label , value ) = show label <> " = " <> nl value <> aux ( l + 1 ) value
+            where nl ( ORecord _ ) = "\n"
+                  nl ( OVector _ ) = "\n"
+                  nl _ = ""
 
           indent :: Natural -> String -> String
           indent 0 s = s
@@ -92,6 +97,15 @@ ex1 = ORecord $ fromList
           , ( "test02" , ONumber 12 )
           ]
         )
+      ]
+    )
+  , ( "field03" , OVector $
+      [ ONull
+      , OBool False
+      , ORecord $ fromList
+          [ ( "test01" , OString "hello world!" )
+          , ( "test02" , ONumber 12 )
+          ]
       ]
     )
   ]
@@ -171,4 +185,3 @@ instance ( s ~ 'MetaSel 'Nothing x y z , EncOpaque' f ) => EncOpaque' ( S1 s f )
 instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :+: g ) where
   encOpaque' ( L1 v ) = encOpaque' v
   encOpaque' ( R1 v ) = encOpaque' v
-
