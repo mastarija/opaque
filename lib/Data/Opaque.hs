@@ -1,31 +1,33 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 --
 module Data.Opaque where
 --
-import Data.Map         ( Map , toList , fromList )
-import Data.Word        ( Word8 )
-import Data.List        ( intercalate )
-import Numeric.Natural  ( Natural )
+import Data.Map ( Map )
+import Data.Word ( Word8 )
+--
+import qualified Data.Map as Map
 --
 import GHC.Generics
   ( Generic (..)
-  , Selector (..)
-  , Constructor (..)
-  , Meta (..)
-  , M1 (..) , D1 , D , C1 , C , S1 , S
+  , M1 (..)
+  , D1
   , V1
-  , U1 (..)
-  , K1 (..) , Rec0 , R
-  , (:+:) (..)
-  , (:*:) (..)
+  , U1
+  , K1 (..)
+  , Rec0
+  , C1 , Constructor (..)
+  , S1 , Selector (..)
+  , (:+:)(..)
+  , (:*:)(..)
   )
 --
 
@@ -39,101 +41,52 @@ type OVector = [ Opaque ]
 type ORecord = Map OLabel Opaque
 
 data Opaque
-  = ONull
+  = OVoid
+  | ONull
   | OBool   !OBool
   | OBinary !OBinary
   | ONumber !ONumber
   | OString !OString
   | OVector !OVector
   | ORecord !ORecord
-  deriving ( Eq , Generic )
-
-instance Show Opaque where
-  show = aux 0
-    where aux :: Natural -> Opaque -> String
-          aux l = \case
-            ONull     -> "Null"
-            OBool b   -> show b
-            OBinary _ -> "..."
-            ONumber n -> show n
-            OString s -> show s
-            OVector v -> concat
-              [ indent l "[ "
-              , intercalate ( "\n" <> ( indent l ", " ) )
-              $ fmap ( aux l ) v
-              , "\n" <> ( indent l "]")
-              ]
-            ORecord r -> concat
-              [ indent l "{ "
-              , intercalate ( "\n" <> ( indent l ", " ) )
-              $ fmap ( rec l )
-              $ toList r
-              , "\n" <> ( indent l "}" )
-              ]
-
-          tab :: String
-          tab = "  "
-
-          rec :: Natural -> ( OLabel , Opaque ) -> String
-          rec l ( label , value ) = show label <> " = " <> nl value <> aux ( l + 1 ) value
-            where nl ( ORecord _ ) = "\n"
-                  nl ( OVector _ ) = "\n"
-                  nl _ = ""
-
-          indent :: Natural -> String -> String
-          indent 0 s = s
-          indent n s = tab <> indent ( n - 1 ) s
 
 --
 
-ex1 :: Opaque
-ex1 = ORecord $ fromList
-  [ ( "field01" , ONull )
-  , ( "field02" , ORecord $ fromList
-      [ ( "test01" , OBool True )
-      , ( "test02" , ONumber 12 )
-      , ( "test03" , ORecord $ fromList
-          [ ( "test01" , OString "hello world!" )
-          , ( "test02" , ONumber 12 )
-          ]
-        )
-      ]
-    )
-  , ( "field03" , OVector $
-      [ ONull
-      , OBool False
-      , ORecord $ fromList
-          [ ( "test01" , OString "hello world!" )
-          , ( "test02" , ONumber 12 )
-          ]
-      ]
-    )
-  ]
+data Test00
+  deriving ( Generic , EncOpaque )
 
-data Test00 = Test00
-  deriving ( Show , Generic , EncOpaque )
+data Test01 = Test01_1
+  deriving ( Generic , EncOpaque )
 
-data Test01 = Test01_0 | Test01_1
-  deriving ( Show , Generic , EncOpaque )
+data Test02 = Test02_1 | Test02_2
+  deriving ( Generic , EncOpaque )
 
-data Test02 = Test02_0 | Test02_1 | Test02_3 Test00 | Test02_4 Test00 Test01
-  deriving ( Show , Generic , EncOpaque )
+data Test03 = Test03_1 Test01 Test02 Test01 Test02 Test01
+  deriving ( Generic , EncOpaque )
 
-data Test03 = Test03
-  { t03Field00 :: Test00
-  , t03Field01 :: Test01
-  , t03Field02 :: Test02
-  }
+data Test04 = Test04_1 | Test04_2 Test01 Test02
+  deriving ( Generic , EncOpaque )
 
-data Test04
-  = Test04_0
-  | Test04_1 Test03
-  | Test04_2
-    { t04Field00 :: Test00
-    , t04Field01 :: Test01
-    , t04Field02 :: Test02
-    , t04Field03 :: Test03
+data Test05 = Test05_1 | Test05_2 Test01 Test02 Test03 Test04
+  deriving ( Generic , EncOpaque )
+
+data Test06 = Test06
+  { t06_f1 :: Test01
+  , t06_f2 :: Test02
+  , t06_f3 :: Test03
+  , t06_f4 :: Test04
+  , t06_f5 :: Test05
+  } deriving ( Generic , EncOpaque )
+
+data Test07
+  = Test07_1 Test03
+  | Test07_2 Test03 Test04
+  | Test07_3
+    { t07_f1 :: Test04
+    , t07_f2 :: Test05
+    , t07_f3 :: Test06
     }
+  deriving ( Generic , EncOpaque )
 
 --
 
@@ -145,43 +98,49 @@ class EncOpaque a where
 class EncOpaque' f where
   encOpaque' :: f p -> Opaque
 
---
+-- datatype entry point
+instance EncOpaque' v => EncOpaque' ( D1 m v ) where
+  encOpaque' = encOpaque' . unM1
 
+-- instance for uninhabited types
+-- instead of throwing error we have special 'OVoid' value
 instance EncOpaque' V1 where
-  encOpaque' = const ONull
+  encOpaque' _ = OVoid
 
-instance EncOpaque' U1 where
-  encOpaque' = const ONull
-
-instance EncOpaque v => EncOpaque' ( Rec0 v ) where
-  encOpaque' = encOpaque . unK1
-
-instance ( EncOpaque' f ) => EncOpaque' ( D1 d f ) where
-  encOpaque' = encOpaque' . unM1
-
-instance {-# OVERLAPPABLE #-} EncOpaque' f => EncOpaque' ( C1 c f ) where
-  encOpaque' = encOpaque' . unM1
-
-instance ( Constructor c ) => EncOpaque' ( C1 c U1 ) where
-  encOpaque' c = ORecord $ fromList
-    [ ( "con" , OString $ conName c )
-    ]
-
-instance ( Constructor c , EncOpaque' f ) => EncOpaque' ( C1 c ( S1 s f ) ) where
-  encOpaque' c@( M1 ( M1 v ) ) = ORecord $ fromList
+-- general constructor instance
+instance {-# OVERLAPPABLE #-} ( Constructor c , EncOpaque' v ) => EncOpaque' ( C1 c v ) where
+  encOpaque' c@( M1 v ) = ORecord $ Map.fromList
     [ ( "con" , OString $ conName c )
     , ( "val" , encOpaque' v )
     ]
 
-instance ( s ~ 'MetaSel 'Nothing x y z , EncOpaque' f , EncOpaque' g ) => EncOpaque' ( ( S1 s f ) :*: g ) where
-  encOpaque' ( ( M1 f ) :*: g ) = encOpaque' f `aux` encOpaque' g
-    where aux :: Opaque -> Opaque -> Opaque
-          aux v1 ( OVector v2 ) = OVector $ v1 : v2
-          aux v1 v2             = OVector $ v1 : [ v2 ]
+-- instance for a simple constructor with no fields
+instance ( Constructor c ) => EncOpaque' ( C1 c U1 ) where
+  encOpaque' c = ORecord $ Map.fromList
+    [ ( "con" , OString $ conName c )
+    ]
 
-instance ( s ~ 'MetaSel 'Nothing x y z , EncOpaque' f ) => EncOpaque' ( S1 s f ) where
-  encOpaque' = encOpaque' . unM1
+-- selector instance
+instance ( Selector s , EncOpaque' v ) => EncOpaque' ( S1 s v ) where
+  encOpaque' s@( M1 v ) = case selName s of
+    ""    -> encOpaque' v -- simple constructor
+    label -> ORecord $ Map.fromList -- record with fields
+      [ ( label , encOpaque' v )
+      ]
 
+-- vague recursive instance
+instance EncOpaque v => EncOpaque' ( Rec0 v ) where
+  encOpaque' = encOpaque . unK1
+
+-- vague sum instance
 instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :+: g ) where
-  encOpaque' ( L1 v ) = encOpaque' v
-  encOpaque' ( R1 v ) = encOpaque' v
+  encOpaque' = \case
+    L1 f -> encOpaque' f
+    R1 g -> encOpaque' g
+
+-- vague product instance
+instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :*: g ) where
+  encOpaque' ( f :*: g ) = OVector $ aux f <> aux g
+    where aux v = case encOpaque' v of
+            OVector r -> r
+            r         -> [ r ]

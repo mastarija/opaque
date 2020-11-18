@@ -1,6 +1,4 @@
 packages    : opaque.cabal
 
 constraints : base                  >=4.0       && <5
-            , aeson                 >=1.5       && <1.6
             , containers            >=0.6       && <0.7
-            , bytestring            >=0.10      && <0.12
