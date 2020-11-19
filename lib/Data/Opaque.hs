@@ -139,6 +139,7 @@ test02 = Test02_1
 data Test03 = Test03_1 Test01 Test02 Test01 Test02 Test01
   deriving ( Generic , EncOpaque )
 
+-- TODO : encodes as a record instead of a vector
 test03 :: Test03
 test03 = Test03_1 Test01_1 Test02_1 Test01_1 Test02_2 Test01_1
 
@@ -202,35 +203,40 @@ instance EncOpaque' v => EncOpaque' ( D1 m v ) where
   encOpaque' = encOpaque' . unM1
 
 -- instance for uninhabited types
--- instead of throwing error we have special 'OVoid' value
 instance EncOpaque' V1 where
   encOpaque' _ = OVoid
 
--- simple constructor instance
-instance ( Constructor ( 'MetaCons s n 'False ) , EncOpaque' v )
-  => EncOpaque' ( C1 ( 'MetaCons s n 'False ) v ) where
-  encOpaque' c@( M1 v ) = ORecord $ Map.fromList
-    [ ( "con" , OString $ conName c )
-    , ( "val" , encOpaque' v )
-    ]
-
--- instance for a simple constructor with no fields
-instance {-# OVERLAPPING #-} ( Constructor ( 'MetaCons s n 'False ) )
+-- constructor with no fields
+instance ( Constructor ( 'MetaCons s n 'False ) )
   => EncOpaque' ( C1 ( 'MetaCons s n 'False ) U1 ) where
   encOpaque' c = ORecord $ Map.fromList
     [ ( "con" , OString $ conName c )
     ]
 
--- 
+-- constructor with a single field
+instance ( Selector s , Constructor ( 'MetaCons c n 'False ) , EncOpaque v )
+  => EncOpaque' ( C1 ( 'MetaCons c n 'False ) ( S1 s ( Rec0 v ) ) ) where
+  encOpaque' c@( M1 s ) = ORecord $ Map.fromList
+    [ ( "con" , OString $ conName c )
+    , ( "val" , encOpaque' s )
+    ]
 
--- instance for records with single field
+-- constructor with multiple fields
+instance ( Constructor ( 'MetaCons s n 'False ) , EncOpaque' ( f :*: g ) )
+  => EncOpaque' ( C1 ( 'MetaCons s n 'False ) ( f :*: g ) ) where
+  encOpaque' c@( M1 fg ) = ORecord $ Map.fromList
+    [ ( "con" , OString $ conName c )
+    , ( "val" , encOpaque' fg )
+    ]
+
+-- record with single field
 instance ( Selector s , EncOpaque' v )
   => EncOpaque' ( C1 ( 'MetaCons c n 'True ) ( S1 s v ) ) where
   encOpaque' ( M1 ( s@( M1 v ) ) ) = ORecord $ Map.fromList
     [ ( selName s , encOpaque' v )
     ]
 
--- general record instance
+-- record with multiple fields
 instance ( Constructor ( 'MetaCons s n 'True ) , EncOpaque' f , EncOpaque' g )
   => EncOpaque' ( C1 ( 'MetaCons s n 'True ) ( f :*: g ) ) where
   encOpaque' ( M1 ( f :*: g ) ) = ORecord $ case ( encOpaque' f , encOpaque' g ) of
@@ -255,7 +261,9 @@ instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :+: g ) where
     L1 f -> encOpaque' f
     R1 g -> encOpaque' g
 
--- vague product instance
+-- smart (?) product instance
+-- most of these won't happen
+-- this avoids writing errors
 instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :*: g ) where
   encOpaque' ( f :*: g ) = case ( encOpaque' f , encOpaque' g ) of
     ( OVector vsl , OVector vsr ) -> OVector $ vsl <> vsr
