@@ -12,7 +12,9 @@
 module Data.Opaque where
 --
 import Data.Map ( Map )
+import Data.Bool ( bool )
 import Data.Word ( Word8 )
+import Data.List ( intersperse )
 --
 import qualified Data.Map as Map
 --
@@ -49,6 +51,104 @@ data Opaque
   | OString !OString
   | OVector !OVector
   | ORecord !ORecord
+
+--
+
+show00 :: Opaque
+show00 = OVector
+  [ OVoid
+  , ONull
+  , OString "hello"
+  ]
+
+show01 :: Opaque
+show01 = ORecord $ Map.fromList
+  [ ( "f1" , OVoid )
+  , ( "f2" , ONull )
+  , ( "f3" , OString "hello" )
+  , ( "f4" , show00 )
+  ]
+
+show02 :: Opaque
+show02 = ORecord $ Map.fromList
+  [ ( "f1" , OVoid )
+  , ( "f2" , ONull )
+  , ( "f3" , show00 )
+  , ( "f4" , show01 )
+  ]
+
+show03 :: Opaque
+show03 = OVector
+  [ OVoid
+  , ONull
+  , OString "hello"
+  , show01
+  , show02
+  ]
+
+instance Show Opaque where
+  show = aux 0
+    where
+      aux l = \case
+        OVoid     -> "OVoid"
+        ONull     -> "ONull"
+        OBool   b -> show b
+        OBinary _ -> "<010>"
+        ONumber n -> show n
+        OString s -> show s
+        OVector v -> vec l v
+        ORecord r -> rec l r
+
+      pad l = ( replicate ( 2 * l ) ' ' <> )
+
+      vec l vs = concat
+        [ pad l "[ "
+        , concat
+        $ intersperse ( '\n' : pad l ", " )
+        $ fmap
+          ( \ v -> concat
+            [ val v
+            , " : "
+            , bool "" "\n" ( cmp v )
+            , aux ( bool 0 ( succ l ) ( cmp v ) ) v 
+            ]
+          )
+          vs
+        , "\n" <> pad l "]"
+        ]
+
+      rec l fs = concat
+        [ pad l "{ "
+        , concat
+        $ intersperse ( '\n' : pad l ", " )
+        $ fmap
+          ( \ ( f , v ) -> concat
+            [ f
+            , " : "
+            , val v
+            , " = "
+            , bool "" "\n" ( cmp v )
+            , aux ( bool 0 ( succ l ) ( cmp v ) ) v
+            ]
+          )
+          ( Map.toList fs )
+        , "\n" <> pad l "}"
+        ]
+
+      val = \case
+        OVoid     -> "OVoid"
+        ONull     -> "ONull"
+        OBool   _ -> "OBool"
+        OBinary _ -> "OBinary"
+        ONumber _ -> "ONumber"
+        OString _ -> "OString"
+        OVector _ -> "OVector"
+        ORecord _ -> "ORecord"
+
+      cmp = \case
+        OVector _ -> True
+        ORecord _ -> True
+        _         -> False
 
 --
 
@@ -97,6 +197,8 @@ class EncOpaque a where
 
 class EncOpaque' f where
   encOpaque' :: f p -> Opaque
+
+--
 
 -- datatype entry point
 instance EncOpaque' v => EncOpaque' ( D1 m v ) where
