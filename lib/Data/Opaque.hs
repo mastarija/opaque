@@ -52,6 +52,7 @@ data Opaque
   | OString !OString
   | OVector !OVector
   | ORecord !ORecord
+  deriving ( Eq , Generic )
 
 --
 
@@ -139,7 +140,6 @@ test02 = Test02_1
 data Test03 = Test03_1 Test01 Test02 Test01 Test02 Test01
   deriving ( Generic , EncOpaque )
 
--- TODO : encodes as a record instead of a vector
 test03 :: Test03
 test03 = Test03_1 Test01_1 Test02_1 Test01_1 Test02_2 Test01_1
 
@@ -152,7 +152,6 @@ test04 = Test04_2 test01 test02
 data Test05 = Test05_1 | Test05_2 Test01 Test02 Test03 Test04
   deriving ( Generic , EncOpaque )
 
--- TODO : test01 gets encoded incorrectly
 test05 :: Test05
 test05 = Test05_2 test01 test02 test03 test04
 
@@ -206,6 +205,14 @@ instance EncOpaque' v => EncOpaque' ( D1 m v ) where
 instance EncOpaque' V1 where
   encOpaque' _ = OVoid
 
+-- instance for unit types
+instance EncOpaque' U1 where
+  encOpaque' _ = ONull
+
+-- recursive instance
+instance EncOpaque v => EncOpaque' ( Rec0 v ) where
+  encOpaque' = encOpaque . unK1
+
 -- constructor with no fields
 instance ( Constructor ( 'MetaCons s n 'False ) )
   => EncOpaque' ( C1 ( 'MetaCons s n 'False ) U1 ) where
@@ -237,23 +244,18 @@ instance ( Selector s , EncOpaque' v )
     ]
 
 -- record with multiple fields
-instance ( Constructor ( 'MetaCons s n 'True ) , EncOpaque' f , EncOpaque' g )
-  => EncOpaque' ( C1 ( 'MetaCons s n 'True ) ( f :*: g ) ) where
-  encOpaque' ( M1 ( f :*: g ) ) = ORecord $ case ( encOpaque' f , encOpaque' g ) of
-    ( ORecord rsl , ORecord rsr ) -> rsl <> rsr
-    _                             -> mempty
+instance EncOpaque' ( f :*: g ) => EncOpaque' ( C1 ( 'MetaCons s n 'True ) ( f :*: g ) ) where
+  encOpaque' ( M1 fg ) = encOpaque' fg 
 
 -- selector instance
 instance ( Selector s , EncOpaque' v ) => EncOpaque' ( S1 s v ) where
   encOpaque' s@( M1 v ) = case selName s of
-    ""    -> encOpaque' v -- simple constructor
+    ""    -> case encOpaque' v of -- simple constructor
+      OVector v' -> OVector v'
+      v'         -> OVector [ v' ]
     label -> ORecord $ Map.fromList -- record with fields
       [ ( label , encOpaque' v )
       ]
-
--- recursive instance
-instance EncOpaque v => EncOpaque' ( Rec0 v ) where
-  encOpaque' = encOpaque . unK1
 
 -- sum instance
 instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :+: g ) where
