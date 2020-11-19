@@ -55,38 +55,6 @@ data Opaque
 
 --
 
-show00 :: Opaque
-show00 = OVector
-  [ OVoid
-  , ONull
-  , OString "hello"
-  ]
-
-show01 :: Opaque
-show01 = ORecord $ Map.fromList
-  [ ( "f1" , OVoid )
-  , ( "f2" , ONull )
-  , ( "f3" , OString "hello" )
-  , ( "f4" , show00 )
-  ]
-
-show02 :: Opaque
-show02 = ORecord $ Map.fromList
-  [ ( "f1" , OVoid )
-  , ( "f2" , ONull )
-  , ( "f3" , show00 )
-  , ( "f4" , show01 )
-  ]
-
-show03 :: Opaque
-show03 = OVector
-  [ OVoid
-  , ONull
-  , OString "hello"
-  , show01
-  , show02
-  ]
-
 instance Show Opaque where
   show = aux 0
     where
@@ -100,7 +68,7 @@ instance Show Opaque where
         OVector v -> vec l v
         ORecord r -> rec l r
 
-      pad l = ( replicate ( 2 * l ) ' ' <> )
+      pad l = ( replicate ( 4 * l ) ' ' <> )
 
       vec l vs = concat
         [ pad l "[ "
@@ -183,6 +151,7 @@ test04 = Test04_2 test01 test02
 data Test05 = Test05_1 | Test05_2 Test01 Test02 Test03 Test04
   deriving ( Generic , EncOpaque )
 
+-- TODO : test01 gets encoded incorrectly
 test05 :: Test05
 test05 = Test05_2 test01 test02 test03 test04
 
@@ -209,6 +178,12 @@ data Test07
 
 test07 :: Test07
 test07 = Test07_3 test04 test05 test06
+
+data Test08 = Test08 { unTest08 :: Test01 }
+  deriving ( Generic , EncOpaque )
+
+test08 :: Test08
+test08 = Test08 test01
 
 --
 
@@ -248,8 +223,14 @@ instance {-# OVERLAPPING #-} ( Constructor ( 'MetaCons s n 'False ) )
 
 -- 
 
--- record instance
--- TODO : instance for records with single field
+-- instance for records with single field
+instance ( Selector s , EncOpaque' v )
+  => EncOpaque' ( C1 ( 'MetaCons c n 'True ) ( S1 s v ) ) where
+  encOpaque' ( M1 ( s@( M1 v ) ) ) = ORecord $ Map.fromList
+    [ ( selName s , encOpaque' v )
+    ]
+
+-- general record instance
 instance ( Constructor ( 'MetaCons s n 'True ) , EncOpaque' f , EncOpaque' g )
   => EncOpaque' ( C1 ( 'MetaCons s n 'True ) ( f :*: g ) ) where
   encOpaque' ( M1 ( f :*: g ) ) = ORecord $ case ( encOpaque' f , encOpaque' g ) of
@@ -264,18 +245,17 @@ instance ( Selector s , EncOpaque' v ) => EncOpaque' ( S1 s v ) where
       [ ( label , encOpaque' v )
       ]
 
--- vague recursive instance
+-- recursive instance
 instance EncOpaque v => EncOpaque' ( Rec0 v ) where
   encOpaque' = encOpaque . unK1
 
--- vague sum instance
+-- sum instance
 instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :+: g ) where
   encOpaque' = \case
     L1 f -> encOpaque' f
     R1 g -> encOpaque' g
 
 -- vague product instance
--- TODO : Add case for record products
 instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :*: g ) where
   encOpaque' ( f :*: g ) = case ( encOpaque' f , encOpaque' g ) of
     ( OVector vsl , OVector vsr ) -> OVector $ vsl <> vsr
