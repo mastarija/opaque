@@ -122,71 +122,6 @@ instance Show Opaque where
 
 --
 
-data Test00
-  deriving ( Generic , EncOpaque )
-
-data Test01 = Test01_1
-  deriving ( Generic , EncOpaque )
-
-test01 :: Test01
-test01 = Test01_1
-
-data Test02 = Test02_1 | Test02_2
-  deriving ( Generic , EncOpaque )
-
-test02 :: Test02
-test02 = Test02_1
-
-data Test03 = Test03_1 Test01 Test02 Test01 Test02 Test01
-  deriving ( Generic , EncOpaque )
-
-test03 :: Test03
-test03 = Test03_1 Test01_1 Test02_1 Test01_1 Test02_2 Test01_1
-
-data Test04 = Test04_1 | Test04_2 Test01 Test02
-  deriving ( Generic , EncOpaque )
-
-test04 :: Test04
-test04 = Test04_2 test01 test02
-
-data Test05 = Test05_1 | Test05_2 Test01 Test02 Test03 Test04
-  deriving ( Generic , EncOpaque )
-
-test05 :: Test05
-test05 = Test05_2 test01 test02 test03 test04
-
-data Test06 = Test06
-  { t06_f1 :: Test01
-  , t06_f2 :: Test02
-  , t06_f3 :: Test03
-  , t06_f4 :: Test04
-  , t06_f5 :: Test05
-  } deriving ( Generic , EncOpaque )
-
-test06 :: Test06
-test06 = Test06 test01 test02 test03 test04 test05
-
-data Test07
-  = Test07_1 Test03
-  | Test07_2 Test03 Test04
-  | Test07_3
-    { t07_f1 :: Test04
-    , t07_f2 :: Test05
-    , t07_f3 :: Test06
-    }
-  deriving ( Generic , EncOpaque )
-
-test07 :: Test07
-test07 = Test07_3 test04 test05 test06
-
-data Test08 = Test08 { unTest08 :: Test01 }
-  deriving ( Generic , EncOpaque )
-
-test08 :: Test08
-test08 = Test08 test01
-
---
-
 class EncOpaque a where
   encOpaque :: a -> Opaque
   default encOpaque :: ( Generic a , EncOpaque' ( Rep a ) ) => a -> Opaque
@@ -275,3 +210,11 @@ instance ( EncOpaque' f , EncOpaque' g ) => EncOpaque' ( f :*: g ) where
     ( OVector vsl , v           ) -> OVector $ vsl <> [ v ]
     ( v           , OVector vsr ) -> OVector $ v : vsr
     ( vl          , vr          ) -> OVector $ [ vl , vr ]
+
+--
+
+class DecOpaque a where
+  decOpaque :: Opaque -> Maybe a
+
+class DecOpaque' a where
+  decOpaque' :: Opaque -> Maybe ( Rep a )
