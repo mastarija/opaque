@@ -2,7 +2,6 @@ cabal-version       : 3.0
 
 name                : opaque
 version             : 0.0.0.0
-build-type          : Simple
 
 category            : Data
 synopsis            : Simple multipurpose opaque data type.
@@ -16,7 +15,7 @@ maintainer          : luka@mastarija.com
 
 license             : MIT
 license-file        : LICENSE
-copyright           : Copyright (C) Luka Hadžiegrić 2020
+copyright           : Copyright (C) Luka Hadžiegrić 2022
 
 source-repository head
   type              : git
@@ -25,7 +24,6 @@ source-repository head
 common core
   ghc-options       : -Wall
   build-depends     : base
-                    , containers
   default-language  : Haskell2010
 
 library

@@ -1,2 +1,3 @@
 # opaque
-An opaque Haskell data type. When type safety is not what you need.
+
+An opaque Haskell data type. For when the type safety is simply not what you need.
